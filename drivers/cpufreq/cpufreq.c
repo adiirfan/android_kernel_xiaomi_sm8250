@@ -35,6 +35,12 @@
 
 #include <trace/events/power.h>
 
+#define LVL1_LITTLE 1804800
+#define LVL1_BIG    2054400
+#define LVL1_PRIME  2457600
+
+static int batterysaver_level = 0;
+
 static LIST_HEAD(cpufreq_policy_list);
 
 static inline bool policy_is_inactive(struct cpufreq_policy *policy)
@@ -494,6 +500,16 @@ void cpufreq_disable_fast_switch(struct cpufreq_policy *policy)
 }
 EXPORT_SYMBOL_GPL(cpufreq_disable_fast_switch);
 
+static int batterysaver_max_freqs[BATTERY_SAVER_MAX_LEVEL][8] = {
+	{ LVL1_LITTLE,LVL1_LITTLE,LVL1_LITTLE,LVL1_LITTLE,
+	LVL1_BIG,LVL1_BIG,LVL1_BIG,
+	LVL1_PRIME },
+};
+
+static int get_cpu_max_for_core(unsigned int cpu, int batterysaverlevel) {
+	return batterysaver_max_freqs[0][cpu];
+}
+
 /**
  * cpufreq_driver_resolve_freq - Map a target frequency to a driver-supported
  * one.
@@ -507,7 +523,12 @@ EXPORT_SYMBOL_GPL(cpufreq_disable_fast_switch);
 unsigned int cpufreq_driver_resolve_freq(struct cpufreq_policy *policy,
 					 unsigned int target_freq)
 {
-	target_freq = clamp_val(target_freq, policy->min, policy->max);
+	unsigned int cpu = policy->cpu;
+	int max = 0;
+	max = get_cpu_max_for_core(cpu, 0);
+	if (max<=0) max = policy->max;
+	target_freq = clamp_val(target_freq, policy->min, max);
+
 	policy->cached_target_freq = target_freq;
 
 	if (cpufreq_driver->target_index) {
@@ -707,6 +728,18 @@ static ssize_t show_scaling_cur_freq(struct cpufreq_policy *policy, char *buf)
 	else
 		ret = sprintf(buf, "%u\n", policy->cur);
 	return ret;
+}
+
+static int skip_or_tune_min_freq(struct cpufreq_policy *cur_policy, struct cpufreq_policy *new_policy) {
+	unsigned int cpu = cur_policy->cpu;
+	int saver_max = 0;
+	saver_max = get_cpu_max_for_core(cpu,batterysaver_level);
+	pr_info("%s MIN freq tuning: required min freq: %d - setting saver max freq: %d\n",__func__,new_policy->min, saver_max);
+	if (saver_max>=0 && saver_max < new_policy->min) {
+			// if battery saver max freq is BELOW the new min (freq boosting supposedly) cut back to saver maximum...
+		new_policy->min = saver_max;
+	}
+	return 0;
 }
 
 static int cpufreq_set_policy(struct cpufreq_policy *policy,
@@ -2280,6 +2313,26 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 
 	policy->min = new_policy->min;
 	policy->max = new_policy->max;
+	
+	unsigned int cpu = policy->cpu;
+	int max = 0;
+	pr_debug("%s [cleanslate_policy] new min and max freqs are %u - %u kHz\n",__func__,
+			 policy->min, policy->max);
+	max = get_cpu_max_for_core(cpu,batterysaver_level);
+	if (policy->min>max) {
+		pr_debug("%s [cleanslate_policy] freq for core: %u saver_level %d  cpu: %d  target MIN: %u",__func__,max,batterysaver_level,cpu,policy->min);
+		policy->min = max;
+		new_policy->min = max;
+	}
+	if (policy->max>max) {
+		pr_debug("%s [cleanslate_policy] freq for core: %u saver_level %d  cpu: %d  target MAX: %u",__func__,max,batterysaver_level,cpu,policy->max);
+		policy->max = max;
+		new_policy->max = max;
+	}
+
+	pr_debug("%s [cleanslate_policy] OVERRIDDEN: new min and max freqs are %u - %u kHz\n",__func__,
+		policy->min, policy->max);
+
 	trace_cpu_frequency_limits(policy);
 
 	arch_set_max_freq_scale(policy->cpus, policy->max);
