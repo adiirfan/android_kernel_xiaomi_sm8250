@@ -41,6 +41,8 @@
 
 static int batterysaver_level = 0;
 
+#define BATTERY_SAVER_MAX_LEVEL 1
+
 static LIST_HEAD(cpufreq_policy_list);
 
 static inline bool policy_is_inactive(struct cpufreq_policy *policy)
