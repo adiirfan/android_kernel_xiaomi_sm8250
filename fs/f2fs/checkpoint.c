@@ -1236,16 +1236,11 @@ retry_flush_dents:
 		atomic_inc(&sbi->wb_sync_req[NODE]);
 		err = f2fs_sync_node_pages(sbi, &wbc, false, FS_CP_NODE_IO);
 		atomic_dec(&sbi->wb_sync_req[NODE]);
-<<<<<<< HEAD
-		if (err)
-			goto out;
-=======
 		if (err) {
 			up_write(&sbi->node_change);
 			f2fs_unlock_all(sbi);
 			return err;
 		}
->>>>>>> 6b4bd1e6da38642e2ffffe2271694dd61a8c6e9d
 		cond_resched();
 		goto retry_flush_quotas;
 	}

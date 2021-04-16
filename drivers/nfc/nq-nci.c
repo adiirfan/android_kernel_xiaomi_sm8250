@@ -1254,6 +1254,7 @@ static int nfcc_hw_check(struct i2c_client *client, struct nqx_dev *nqx_dev)
 		goto done;
 	}
 
+reset_enable_gpio:
 	/* making sure that the NFCC starts in a clean state. */
 #ifdef NQ_READ_INT
 	gpio_set_value(enable_gpio, 1);/* HPD : Enable*/
